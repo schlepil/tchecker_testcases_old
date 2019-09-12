@@ -1,0 +1,7 @@
+# requirements
+# Attention slycot needs lapack and eventually a fortran compiler
+numpy
+scipy
+control
+slycot
+matplotlib

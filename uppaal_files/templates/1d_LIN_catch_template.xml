@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>// Discretization
+const int conv = __CONVERTTIME__;
+
+// Place global declarations here.
+broadcast chan go;
+clock glob;
+const int kMax = __KMAX__; //Number of different funnel subsystems
+const int iAllNum = __IMAX__; //highest number of different velocities for one reference trajectory 
+const int jAllNum = __JMAX__; //highest number of different sizes for one reference trajectory 
+typedef int[0,kMax] ak; //Number of subsystem
+typedef int[0,iAllNum] ai; //Velocity level of the funnel: faster to slower
+typedef int[0,jAllNum] aj; //Size level of the funnel: bigger to smaller
+
+
+//Rebuilding the lanes with sine trajectory
+//Forward alpha 1.0: big=000, medium=001, small=002
+//Forward alpha 1.5: big=010, medium=011, small=012
+//Forward alpha 5.0: big=020, medium=021, small=022
+//Backward alpha 1.0: big=100, medium=101, small=102
+//Backward alpha 1.5: big=110, medium=111, small=112
+//Backward alpha 5.0: big=120, medium=121, small=122
+//Lane 1: big=200, small=201
+//Lane 2: big=300, small=301
+//Lane 3: big=400, small=401
+//Lane 4: big=500, small=501
+//5: Lane 4
+
+const bool isCyc[kMax] = __ISCYC__;
+const int  tInvMax[kMax][iAllNum] = __TINVMAX__;
+
+const int iNum[kMax] = __INUM__;
+const int jNum[kMax] = __JNUM__;
+
+//Convergence time
+const int tMinConv[kMax][iAllNum][jAllNum-1] = __TMINCONV__;
+
+//Highest number of connections
+const int numConnMax = __NUMCONNMAX__;
+typedef int[0, numConnMax-1] transNum;
+//transNum thisT;
+//typedef int[6] aTrans;
+//Number of connections per subfunnel
+const int numConn[kMax][iAllNum][jAllNum] = __NUMCONN__;
+//contants {C1_lower, C1_upper, k_arrive, i_arrive, j_arrive, C1_arrive}
+const int dC[6] = {0,1,0,0,0,0};
+//const int dC11[11][6] = {dC,dC,dC,dC,dC,dC,dC,dC,dC,dC,dC};
+
+const int allConn[kMax][iAllNum][jAllNum][numConnMax][6] = __ALLCONN__;
+
+//Definitions for this 'game'
+const int numCatchers = 1;
+const int packSize=2;
+clock C1[numCatchers], C2[numCatchers];
+typedef int[0,numCatchers-1] sysID;
+typedef int[0, packSize] backPack;
+int pack[numCatchers];
+int posIndex[numCatchers];
+int success=0;
+
+//const int ivNOM[4] = {1, 51, 2, 6};
+//const int ivDENOM[4] = {1, 40, 1, 1};
+
+
+meta int allX[numCatchers];
+meta int allY[numCatchers];
+meta int allZ[numCatchers];
+
+void check_In(const sysID ID, const ak k, const ai i, const aj j){
+    //Calculate which packets can be collected
+    if ( k&gt;2 and j==1){
+        posIndex[ID] = k-1;
+    }
+    //Drop
+    else if (k==2 and j==1){
+        success = success+pack[ID];
+        pack[ID] = 0;
+    }
+    else {
+        posIndex[ID] = -99;
+    }
+    allX[ID] = k;
+    allY[ID] = i;
+    allZ[ID] = j;
+}
+
+    </declaration>
+	<template>
+		<name x="5" y="5">sys</name>
+		<parameter>const sysID ID</parameter>
+		<declaration>// Place local declarations here.
+ak k=0;
+aj j=0;
+ai i=0;
+
+meta int tempa, tempb, tempc;</declaration>
+		<location id="id0" x="255" y="314">
+			<name x="230" y="280">waiting</name>
+			<urgent/>
+		</location>
+		<location id="id1" x="255" y="110">
+			<name x="245" y="76">sys</name>
+			<label kind="invariant" x="187" y="127">C1[ID] &lt;= tInvMax[k][i]</label>
+		</location>
+		<init ref="id0"/>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id1"/>
+			<label kind="select" x="204" y="-246">aT: transNum</label>
+			<label kind="guard" x="-34" y="-229">(aT &lt; numConn[k][i][j]) and (allConn[k][i][j][aT][0] &lt;= C1[ID]) and (C1[ID] &lt;= allConn[k][i][j][aT][1])</label>
+			<label kind="assignment" x="136" y="-212">tempa=k, tempb=i, tempc=j,
+C1[ID] = allConn[tempa][tempb][tempc][aT][5], C2[ID]=0,
+k = allConn[tempa][tempb][tempc][aT][2],
+i = allConn[tempa][tempb][tempc][aT][3], 
+j = allConn[tempa][tempb][tempc][aT][4],
+check_In(ID, k, i, j)</label>
+			<label kind="comments" x="-119" y="-263">Transitons between funnels defined by the same reference trajectory but different size levels and/or velocities</label>
+			<nail x="706" y="-111"/>
+			<nail x="-169" y="-111"/>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id1"/>
+			<label kind="guard" x="136" y="-77">j&lt;jNum[k]-1 and C2[ID]&gt;=tMinConv[k][i][j]</label>
+			<label kind="assignment" x="161" y="-59">j=j+1,C2[ID]=0, check_In(ID, k, i, j)</label>
+			<label kind="comments" x="136" y="-94">Convergence to smaller funnel (size)</label>
+			<nail x="459" y="-34"/>
+			<nail x="60" y="-34"/>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id1"/>
+			<label kind="guard" x="162" y="0">isCyc[k] and C1[ID]==tInvMax[k][i]</label>
+			<label kind="assignment" x="178" y="17">C1[ID]=0, check_In(ID, k, i, j)</label>
+			<label kind="comments" x="153" y="-17">Reset to start id cyclic trajectory</label>
+			<nail x="289" y="34"/>
+			<nail x="221" y="34"/>
+		</transition>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="synchronisation" x="255" y="195">go?</label>
+			<label kind="assignment" x="255" y="212">C1[ID]=0, C2[ID]=0, k=0, i=1, j=0, pack[ID]=0, check_In(ID, k, i, j)</label>
+		</transition>
+	</template>
+	<template>
+		<name>starter</name>
+		<location id="id2" x="102" y="0">
+			<name x="92" y="-34">running</name>
+		</location>
+		<location id="id3" x="0" y="0">
+			<name x="-10" y="-34">waiting</name>
+			<urgent/>
+		</location>
+		<init ref="id3"/>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="18" y="-17">go!</label>
+			<label kind="assignment" x="18" y="0">glob = 0</label>
+		</transition>
+	</template>
+	<template>
+		<name>thrower</name>
+		<declaration>clock Ccatch;
+int counter = 0;
+//int success = 0;
+int fail = 0;
+const int numPacks=3;
+const int deltaC = ((100*conv)/conv);
+const int cTimes[numPacks] = {((20000*conv)/conv), ((50000*conv)/conv), ((58000*conv)/conv)};
+const int lanes[numPacks] = {3, 2, 1};
+
+bool failCheck(){
+    return true;
+}</declaration>
+		<location id="id4" x="-297" y="-119">
+			<committed/>
+		</location>
+		<location id="id5" x="-297" y="-195">
+			<name x="-331" y="-246">checking</name>
+			<label kind="invariant" x="-425" y="-229">Ccatch &lt;= cTimes[counter] + deltaC</label>
+		</location>
+		<location id="id6" x="-297" y="110">
+			<name x="-289" y="85">waiting</name>
+			<urgent/>
+		</location>
+		<location id="id7" x="-297" y="-25">
+			<name x="-289" y="-51">sending</name>
+		</location>
+		<init ref="id6"/>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id7"/>
+			<label kind="select" x="-1147" y="-178">ID: int[0,numCatchers-1]</label>
+			<label kind="guard" x="-1258" y="-136">(allY[ID]&gt;=2) and (allZ[ID]&gt;=3) and 
+(pack[ID] &lt; packSize) and
+(C1[ID] == (tInvMax[allX[ID]][allY[ID]]/3)*(lanes[counter]-1))</label>
+			<label kind="assignment" x="-1113" y="-51">pack[ID]=pack[ID]+1,
+counter=counter+1</label>
+			<nail x="-850" y="-195"/>
+			<nail x="-850" y="-25"/>
+		</transition>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id5"/>
+			<label kind="guard" x="-297" y="-161">Ccatch == cTimes[counter]</label>
+		</transition>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id4"/>
+			<label kind="guard" x="-297" y="-85">counter &lt; numPacks</label>
+		</transition>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-85" y="-170">(Ccatch == cTimes[counter] + deltaC) and 
+failCheck()</label>
+			<label kind="assignment" x="-85" y="-110">counter = counter+1, fail = fail+1</label>
+			<nail x="-93" y="-195"/>
+			<nail x="-93" y="-25"/>
+		</transition>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id7"/>
+			<label kind="select" x="-799" y="-170">catcher: int[0,numCatchers-1]</label>
+			<label kind="guard" x="-799" y="-144">posIndex[catcher]==lanes[counter] and 
+pack[catcher]&lt;packSize</label>
+			<label kind="assignment" x="-799" y="-102">pack[catcher]=pack[catcher]+1,
+counter=counter+1</label>
+			<nail x="-501" y="-195"/>
+			<nail x="-501" y="-25"/>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id7"/>
+			<label kind="synchronisation" x="-297" y="25">go?</label>
+			<label kind="assignment" x="-297" y="42">Ccatch=0</label>
+		</transition>
+	</template>
+	<system>// Place template instantiations here.
+//Process = Template();
+// List one or more processes to be composed into a system.
+//clock C1x, C2x, C1y, C2y;
+//int smallFunX, smallFunY;
+
+//sysX = sys(C1x, C2x, smallFunX);
+//sysY = sys(C1y, C2y, smallFunY);
+//cLock = cLockXY(C1x, C1y, smallFunX, smallFunY);
+//system sysX, sysY, starter, cLock;
+
+catchers(const sysID aID) = sys(aID);
+aThrower = thrower();
+system catchers, aThrower, starter;</system>
+	<queries>
+		<query>
+			<formula>E&lt;&gt; success	==3
+			</formula>
+			<comment>
+			</comment>
+		</query>
+	</queries>
+</nta>
