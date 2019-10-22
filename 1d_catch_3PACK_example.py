@@ -5,16 +5,24 @@ import os
 # MODIFIERS
 # basic
 searchPointFact = 2. # The higher the more transitions are available; Default = 2
-convertTime = 200 # How many discrete timesteps are contained within one second; Default : 350 Attention I do not know how robust the template is when changing this. 100 too 500 seems ok
+convertTime = 3 #Multiplier for discrete time-steps per seconds; Default value 1 corresponds to 10000steps per sec
 # funnel system
-numVelFun = 4 # Number of different velocities; Default was 4
-numSizeFun = 5 # Number of sub-sizes; Default was 5
-
+# L'atteignabilité est en ce moment assez sensible sur ces parametres en ce moment
+# Changez plutot les autres
+numVelFun = 4# Number of different velocities; Default was 4
+numSizeFun = 5# Number of sub-sizes; Default was 5
 
 # Task
-packageGlobTime = [25., 55., 60.] # Arrival time of packages
+# One can change when, where and how many packages have to arrive
+maxCarry = "2" # Maximal number of items carried at a time
+packageGlobTime = [50.*globalRoundVal, 100.*globalRoundVal, 150.*globalRoundVal] # Arrival time of packages
 packageLanes = [3,2,1] # Lanes where they arrive
-deltaTime = 0.025 # Maximally allowed advance/delay for pick up
+deltaTime = 0.025 # Maximally allowed advance/delay for pick up; The smaller, the harder the task
+                  #]0, 0.05]
+
+
+# END MODIFIERS
+assert len(packageLanes) == len(packageGlobTime)
 
 # Discretization
 up = lambda x: int(np.ceil(x * convertTime))
@@ -75,11 +83,11 @@ dX = maxDist/(numStat-1)
 contracCoeff1 = 0.4
 targetAlphasIn1 = np.linspace(0,1,numVelFun)**2*5+1 if numVelFun != 4 else np.array([1.0, 1.25, 1.9, 6]) #Attention smaller number correspond to higher speeds (Directly scales the time needed to travel to whole funnel length!
 
-myFunn_f = fc.funnel1(myTraj_f, mySys, QRlist, targetAlphasIn=targetAlphasIn1, numVelFun=numVelFun, numSizeFun=numSizeFun, contracCoeff=contracCoeff1, dLfIn=dLf1, tScale=convertTime/globalRoundVal)
-myFunn_b = fc.funnel1(myTraj_b, mySys, QRlist, targetAlphasIn=targetAlphasIn1, numVelFun=numVelFun, numSizeFun=numSizeFun, contracCoeff=contracCoeff1, dLfIn=dLf1, tScale=convertTime/globalRoundVal)
+myFunn_f = fc.funnel1(myTraj_f, mySys, QRlist, targetAlphasIn=targetAlphasIn1, numVelFun=numVelFun, numSizeFun=numSizeFun, contracCoeff=contracCoeff1, dLfIn=dLf1, tScale=convertTime)#convertTime/globalRoundVal)
+myFunn_b = fc.funnel1(myTraj_b, mySys, QRlist, targetAlphasIn=targetAlphasIn1, numVelFun=numVelFun, numSizeFun=numSizeFun, contracCoeff=contracCoeff1, dLfIn=dLf1, tScale=convertTime)#convertTime/globalRoundVal)
 myFunn_stat = []
 for k in range(numStat):
-    myFunn_stat.append( fc.funnel1(traj.analyticTraj(m, eval('lambda t:[(dX*{0}),0.0]'.format(float(k))), lambda t:[0.0,0.0], [0.0,50.0], True, tDF, tDFdot, N_searchFromIn=1, N_searchToIn=1), mySysStat, QRstat, numVelFun=1, numSizeFun=3, contracCoeff=0.5**2.0, dLfIn=0.2, tScale=convertTime/globalRoundVal) )
+    myFunn_stat.append( fc.funnel1(traj.analyticTraj(m, eval('lambda t:[(dX*{0}),0.0]'.format(float(k))), lambda t:[0.0,0.0], [0.0,1000.0], True, tDF, tDFdot, N_searchFromIn=1, N_searchToIn=1), mySysStat, QRstat, numVelFun=1, numSizeFun=3, contracCoeff=0.5**2.0, dLfIn=0.2, tScale=convertTime))#convertTime/globalRoundVal) )
 # Save the ID of the starting funnel -> Here we want to start in the deposit lane in the smallest funnel
 
 myTimedAut = fc.timedAutomata()
@@ -88,12 +96,12 @@ myTimedAut.addFunnel(myFunn_b)
 for funn in myFunn_stat:
     myTimedAut.addFunnel(funn)
 myTimedAut.uniqueID()
-myTimedAut.calcTransition(tScale=convertTime/globalRoundVal)
+myTimedAut.calcTransition(tScale=convertTime)#(tScale=convertTime/globalRoundVal)
 myTimedAut.createInvariants()
 
 initDef = { "__initFunnel__":myFunn_stat[0].funnelSys[0][-1].ID, "__initCtrlClock__":str(mid(myFunn_stat[0].funnelSys[0][-1].tSpan[0])), "__initLocalClock__":"0"}
-initDef['__maxCarry__'] = "2"
-initDef['__nbrPack__'] = "3"
+initDef['__maxCarry__'] = maxCarry
+initDef['__nbrPack__'] = f"{len(packageLanes):d}"
 
 # Manually add the catch and deliver transitions
 # Dynamics funnels -> can be caught if in small and slow
@@ -131,7 +139,7 @@ for aFunnelVelSys in myFunn_b.funnelSys[(numVelFun*2)//3:]:
             #transStruct(self, parentIDIn, childIDIn, tSpanIn, transGuardListIn, transSetListIn, evalStrIn='{0:d}', plotStrIn='{0:.3f}')
             ctrlTime = max(aSubFunnel.tSpan[1] - aSubFunnel.tSpan[1]*aLane/4,0)
             thisTSpan = [ctrlTime,ctrlTime]
-            thisGuardList = [["==", "C1_p", mid(ctrlTime)]]
+            thisGuardList = [["==", "C1_p", mid(ctrlTime*globalRoundVal)]]
             thisSetList = [] # All clocks and variables keep their values
             thisTrans = transStruct(aSubFunnel.ID, aSubFunnel.ID, thisTSpan, thisGuardList, thisSetList)
             thisTrans.event = "catch"
@@ -139,7 +147,7 @@ for aFunnelVelSys in myFunn_b.funnelSys[(numVelFun*2)//3:]:
         # Delivering transition
         ctrlTime = 0
         thisTSpan = [ctrlTime, ctrlTime]
-        thisGuardList = [["==", "C1_p", mid(ctrlTime)]]
+        thisGuardList = [["==", "C1_p", mid(ctrlTime*globalRoundVal)]]
         thisSetList = []  # All clocks and variables keep their values
         thisTrans = transStruct(aSubFunnel.ID, aSubFunnel.ID, thisTSpan, thisGuardList, thisSetList)
         thisTrans.event = "deliver"
@@ -180,7 +188,7 @@ for aTrans in robTransList:
 initDef["__RobFunnelTrans__"] = tempStr
 
 # Replace all
-with open("./tchecker_files/templates/1d_catch_states_template.txt", "r") as templ, open(f"./tchecker_files/problems/1d_catch_states_{numVelFun}_{numSizeFun}_{searchPointFact}_{convertTime}.txt", "w") as prob:
+with open("./tchecker_files/templates/1d_catch_states_template_2.tcheck", "r") as templ, open(f"./tchecker_files/problems/1d_catch_states_2_{numVelFun}_{numSizeFun}_{searchPointFact}_{convertTime}.tcheck", "w") as prob:
 
     for aLine in templ:
         for aKey,aVal in initDef.items():

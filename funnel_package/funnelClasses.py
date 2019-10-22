@@ -464,7 +464,10 @@ class funnel1(object):
             #Search parameter
             epsT = 0.001*(aT-targetAlpha)
             while not ground(gToNearest(gToNearest2(epsT))) == ground(gToNearest(epsT)):
-                epsT = gToNearest(epsT+guround(1))#0.001*(aT-targetAlpha)
+                epsT = gToNearest(epsT+np.sign(epsT)*guround(1))#0.001*(aT-targetAlpha)
+            epsT = float(epsT)
+            if epsT==0:
+                raise RuntimeError("Rounding prob")
             #'Additional' lyapunov value needed to cover the ellipse of the small parent funnel
             [_unused, sv, _unused] = svd(dot(thisTi, Tcon))
             lVadd = namax(sv)#TBD:Recheck with different QR
@@ -484,15 +487,18 @@ class funnel1(object):
             sT = toTraj.unitToTime( np.linspace(0.0, 1.0, toTraj.N_searchTo) )#TBD check if scanning the search points is sufficient to ensure many transitions
             sP = toTraj.getX(sT)
             oldtDF = toTraj.tDFc
-            while ( ground( np.fabs(aT - targetAlpha))>=ground(np.fabs(epsT)) ) and check:
+            while ( ground( np.fabs(aT - targetAlpha))>ground(np.fabs(epsT)) ) and check:
                 #Create a dummy traj to avoid rounding errors
                 dtF = dp(tF)
                 #Update final values
                 lVF = lV; aTF = aT;
                 #Reduce alphaTime
+                aTold = dp(aT)
                 aT -= epsT
                 #ensure that changing the alpha results in a trajectory that can still be correctly discretized
                 aT = gToNearest2(aT)
+                if aT==aTold:
+                    raise RuntimeError("rounding problem")
                 #Set new alpha and get maximum allowed lyap val due to constraints lVc
                 dtF.alphaTime = aT #Setter is now decorate so this should be valid
                 trajXdotMax = dtF.traj.getMaxXdot() #Elementwise maximum
@@ -546,7 +552,7 @@ class funnel1(object):
         ############
     def calcAutoTransitions(self, tScale=1):
         #Create all the transitions possible for each subfunnel to other subfunnels
-        #Start of with the connection between the different levels at the same velocity
+        #Start off with the connection between the different levels at the same velocity
         #subfunnel; i==velocity j==level
         #Each funnel has two clocks C1_p/c = gives the location in the parent/child funnel and C2_p indicating the duration (real time) in the funnel 
         #Storing the conditions and setting as a string
@@ -633,7 +639,7 @@ class funnel1(object):
                             if (iFrom == iTo and jFrom == jTo): continue
                             fromFun = self.funnelSys[iFrom][jFrom]
                             toFun = self.funnelSys[iTo][jTo]
-                            thisTrans = getPossibleTrans(fromFun, toFun, fromFun.dLf)#Calculate transitions
+                            thisTrans = getPossibleTrans(fromFun, toFun, fromFun.dLf, tScale=tScale)#Calculate transitions
                             print(str(len(thisTrans))+' transitions exist between '+str(fromFun.ID)+' ; '+str(toFun.ID))
                             for aTrans in thisTrans:
                                 fromFun.transDict[aTrans.tSpan] = aTrans

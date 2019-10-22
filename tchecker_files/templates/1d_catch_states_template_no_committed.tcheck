@@ -31,62 +31,57 @@ process:belt
 # The system/robot catching the packages
 process:rob
 
+# MINIMAL LOCATIONS
+
+# Define the starter
+location:starter:waiting{initial:}
+location:starter:running{}
+
+# Define the belt
+# Initial - waiting for starter
+location:belt:waiting{initial:}
+# package not yet in position
+location:belt:approach{}
+# Package ready to be to be caught
+location:belt:arrived{}
+# All packages are successfully delivered
+location:belt:success{labels:alldelivered}
+
+# Define the robot/system initial state, funnel system later set via script
+# Locations base
+location:rob:waiting{initial:}
+# Other locations (needed for init_funnel)
+# Define the robot/system
+# Robot funnel states
+__RobFunnelStates__
+
+
 # synchronisations
 # all go
 sync:starter@start:belt@start:rob@start
 # catching
 sync:belt@catch:rob@catch
 # delivering
-sync:belt@catch:rob@catch
+sync:belt@deliver:rob@deliver
 
-
-# Define the starter
-# Two locations
-location:starter:waiting{initial::committed:}
-location:starter:running{}
-# Start
+# The transitions - STARTER
 edge:starter:waiting:running:start{do:glob=0}
+edge:belt:waiting:approach:start{}
+# The starting transition transitions to the initial funnel __initFunnel__
+edge:rob:waiting:__initFunnel__:start{do:ctrl=__initCtrlClock__;local=__initLocalClock__}
 
-# Define the belt
-# Initial - waiting for starter
-location:belt:waiting{initial:}
-# package not yet in position
-location:belt:approach{committed:}
-# Package ready to be to be caught
-location:belt:arrived{committed:}
-# All packages are successfully delivered
-location:belt:success{labels:alldelivered}
-
-# The transitions - Base
+# The transitions - BELT For Catching
 # The events catch and deliver have to reappear in rob
 # Catching -> Increment carried
-edge:belt:arrived:approach:catch{do:carried=carried+1}
+edge:belt:arrived:approach:catch{provided:carried<__maxCarry__:do:carried=carried+1}
 # Delivering -> Increase delivered by carried
 edge:belt:approach:approach:deliver{provided:carried>0:do:delivered=delivered+carried; carried=0}
 # Success transition
-edge:belt:approach:success:noaction
+edge:belt:approach:success:noaction{provided:delivered== __nbrPack__}
 # The transitions when a package arrives have to be set by python
 # Belt Arriving Transitions
 __BeltArrivingTrans__
 
 
-# Define the robot/system
-# Locations base
-location:rob:waiting{initial::committed:}
-# Robot funnel states
-__RobFunnelStates__
-
-# The transitions
-# The starting transition transitions to the initial funnel __initFunnel__
-edge:rob:waiting:__initFunnel__:start{do:ctrl=__initCtrlClock__;local=__initLocalClock__}
-# the transitions between the funnels
+# Transitions in the funnel system with events
 __RobFunnelTrans__
-
-
-
-
-
-
-
-
-
